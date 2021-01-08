@@ -4,6 +4,8 @@ from torch.optim import Adam
 from .networks import MLPNetwork
 from .misc import hard_update, gumbel_softmax, onehot_from_logits
 from .noise import OUNoise
+import numpy as np
+import torch
 
 class DDPGAgent(object):
     """
@@ -18,6 +20,7 @@ class DDPGAgent(object):
             num_out_pol (int): number of dimensions for policy output
             num_in_critic (int): number of dimensions for critic input
         """
+        self.num_out_pol = num_out_pol
         self.policy = MLPNetwork(num_in_pol, num_out_pol,
                                  hidden_dim=hidden_dim,
                                  constrain_out=True,
@@ -72,6 +75,13 @@ class DDPGAgent(object):
                 action += Variable(Tensor(self.exploration.noise()),
                                    requires_grad=False)
             action = action.clamp(-1, 1)
+
+        action = torch.cat((action, torch.zeros(action.shape[0],1)), axis=-1)
+        # Add default action if agent is not in env
+        missing_act = torch.zeros(action.shape[-1])
+        missing_act[-1] = 1
+        action[obs[:, -1] == -1] = missing_act
+
         return action
 
     def get_params(self):

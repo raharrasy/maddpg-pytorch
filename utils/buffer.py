@@ -17,11 +17,14 @@ class ReplayBuffer(object):
         """
         self.max_steps = max_steps
         self.num_agents = num_agents
+        self.obs_dims = obs_dims
+        self.ac_dims = ac_dims
         self.obs_buffs = []
         self.ac_buffs = []
         self.rew_buffs = []
         self.next_obs_buffs = []
         self.done_buffs = []
+
         for odim, adim in zip(obs_dims, ac_dims):
             self.obs_buffs.append(np.zeros((max_steps, odim)))
             self.ac_buffs.append(np.zeros((max_steps, adim)))
@@ -29,6 +32,23 @@ class ReplayBuffer(object):
             self.next_obs_buffs.append(np.zeros((max_steps, odim)))
             self.done_buffs.append(np.zeros(max_steps))
 
+
+        self.filled_i = 0  # index of first empty location in buffer (last index when full)
+        self.curr_i = 0  # current index to write to (ovewrite oldest data)
+
+    def reset(self):
+        self.obs_buffs = []
+        self.ac_buffs = []
+        self.rew_buffs = []
+        self.next_obs_buffs = []
+        self.done_buffs = []
+
+        for odim, adim in zip(self.obs_dims, self.ac_dims):
+            self.obs_buffs.append(np.zeros((self.max_steps, odim)))
+            self.ac_buffs.append(np.zeros((self.max_steps, adim)))
+            self.rew_buffs.append(np.zeros(self.max_steps))
+            self.next_obs_buffs.append(np.zeros((self.max_steps, odim)))
+            self.done_buffs.append(np.zeros(self.max_steps))
 
         self.filled_i = 0  # index of first empty location in buffer (last index when full)
         self.curr_i = 0  # current index to write to (ovewrite oldest data)
@@ -87,6 +107,29 @@ class ReplayBuffer(object):
                 ret_rews,
                 [cast(self.next_obs_buffs[i][inds]) for i in range(self.num_agents)],
                 [cast(self.done_buffs[i][inds]) for i in range(self.num_agents)])
+
+    def pop_all(self, to_gpu=False, norm_rews=False):
+        if to_gpu:
+            cast = lambda x: Variable(Tensor(x), requires_grad=False).cuda()
+        else:
+            cast = lambda x: Variable(Tensor(x), requires_grad=False)
+
+        if norm_rews:
+            ret_rews = [cast((self.rew_buffs[i] -
+                              self.rew_buffs[i][:self.filled_i].mean()) /
+                             self.rew_buffs[i][:self.filled_i].std())
+                        for i in range(self.num_agents)]
+        else:
+            ret_rews = [cast(self.rew_buffs[i]) for i in range(self.num_agents)]
+
+        ret_obs = [cast(self.obs_buffs[i]) for i in range(self.num_agents)]
+        ret_ac = [cast(self.ac_buffs[i]) for i in range(self.num_agents)]
+        ret_next_obs = [cast(self.next_obs_buffs[i]) for i in range(self.num_agents)]
+        ret_done_buffs = [cast(self.done_buffs[i]) for i in range(self.num_agents)]
+
+        self.reset()
+        return (ret_obs, ret_ac, ret_rews, ret_next_obs, ret_done_buffs)
+        
 
     def get_average_rewards(self, N):
         if self.filled_i == self.max_steps:

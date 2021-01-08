@@ -46,3 +46,19 @@ def make_env(scenario_name, benchmark=False, discrete_action=False):
                             scenario.observation,
                             discrete_action=discrete_action)
     return env
+
+def make_env_lbf(env_id, seed=1285, effective_max_num_players=3, with_shuffle=True, multi_agent=True):
+    import gym
+    import lbforaging
+    def _init():
+        env = gym.make(
+            env_id, seed=seed,
+            effective_max_num_players=effective_max_num_players,
+            init_num_players=effective_max_num_players,
+            with_shuffle=with_shuffle,
+            multi_agent=multi_agent
+        )
+        return env
+
+    return _init
+
