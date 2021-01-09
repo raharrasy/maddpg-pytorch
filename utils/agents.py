@@ -12,7 +12,9 @@ class DDPGAgent(object):
     General class for DDPG agents (policy, critic, target policy, target
     critic, exploration noise)
     """
-    def __init__(self, num_in_pol, num_out_pol, num_in_critic, hidden_dim=64,
+    def __init__(self, num_in_pol, num_out_pol, num_in_critic,
+                 hidden_dim_pol=[100,100,100,70,25],
+                 hidden_dim_crit=[64, 64],
                  lr=0.01, discrete_action=True):
         """
         Inputs:
@@ -22,19 +24,19 @@ class DDPGAgent(object):
         """
         self.num_out_pol = num_out_pol
         self.policy = MLPNetwork(num_in_pol, num_out_pol,
-                                 hidden_dim=hidden_dim,
+                                 hidden_dim=hidden_dim_pol,
                                  constrain_out=True,
                                  discrete_action=discrete_action)
         self.critic = MLPNetwork(num_in_critic, 1,
-                                 hidden_dim=hidden_dim,
-                                 constrain_out=False)
+                                 hidden_dim=hidden_dim_crit,
+                                 constrain_out=False, n_type="critic")
         self.target_policy = MLPNetwork(num_in_pol, num_out_pol,
-                                        hidden_dim=hidden_dim,
+                                        hidden_dim=hidden_dim_pol,
                                         constrain_out=True,
                                         discrete_action=discrete_action)
         self.target_critic = MLPNetwork(num_in_critic, 1,
-                                        hidden_dim=hidden_dim,
-                                        constrain_out=False)
+                                        hidden_dim=hidden_dim_crit,
+                                        constrain_out=False, n_type="critic")
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
         self.policy_optimizer = Adam(self.policy.parameters(), lr=lr)
