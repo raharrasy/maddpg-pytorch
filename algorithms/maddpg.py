@@ -14,7 +14,7 @@ class MADDPG(object):
     """
     def __init__(self, agent_init_params, alg_types,
                  gamma=0.95, tau=0.01, lr=0.01,
-                 discrete_action=False):
+                 discrete_action=False, reg=0.01):
         """
         Inputs:
             agent_init_params (list of dict): List of dicts with parameters to
@@ -39,6 +39,7 @@ class MADDPG(object):
         self.gamma = gamma
         self.tau = tau
         self.lr = lr
+        self.reg = reg
         self.discrete_action = discrete_action
         self.pol_dev = 'cpu'  # device for policies
         self.critic_dev = 'cpu'  # device for critics
@@ -179,9 +180,13 @@ class MADDPG(object):
         valid_values = obs[agent_i][:, -1] != -1
         vf_in = vf_in[valid_values]
         pol_loss = 0
+        real_pol_loss = 0
+        reg_pol_loss = 0
         if vf_in.shape[0] != 0:
-            pol_loss = -curr_agent.critic(vf_in).mean()
-            pol_loss += (curr_pol_out**2)[valid_values].mean() * 1e-3
+            real_pol_loss = -curr_agent.critic(vf_in).mean()
+            pol_loss = real_pol_loss
+            reg_pol_loss = (curr_pol_out**2)[valid_values].mean() * self.reg
+            pol_loss += reg_pol_loss
             pol_loss.backward()
             torch.nn.utils.clip_grad_norm(curr_agent.policy.parameters(), 0.5)
             curr_agent.policy_optimizer.step()
@@ -189,7 +194,9 @@ class MADDPG(object):
         if logger is not None:
             logger.add_scalars('agent%i/losses' % agent_i,
                                {'vf_loss': vf_loss,
-                                'pol_loss': pol_loss},
+                                'pol_loss': pol_loss,
+                                'real_pol_loss': real_pol_loss,
+                                'reg_pol_loss': reg_pol_loss},
                                self.niter)
 
     def update_all_targets(self):
@@ -253,7 +260,7 @@ class MADDPG(object):
 
     @classmethod
     def init_from_env(cls, env, alg="MADDPG",
-                      gamma=0.95, tau=0.01, lr=0.01):
+                      gamma=0.95, tau=0.01, lr=0.01, reg=0.01):
         """
         Instantiate instance of this class from multi-agent environment
         """
@@ -284,7 +291,7 @@ class MADDPG(object):
         init_dict = {'gamma': gamma, 'tau': tau, 'lr': lr,
                      'alg_types': alg_types,
                      'agent_init_params': agent_init_params,
-                     'discrete_action': discrete_action}
+                     'discrete_action': discrete_action, 'reg': reg}
         instance = cls(**init_dict)
         instance.init_dict = init_dict
         return instance

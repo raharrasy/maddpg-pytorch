@@ -97,12 +97,12 @@ def run(config):
     np.random.seed(config.seed)
     if not USE_CUDA:
         torch.set_num_threads(config.n_training_threads)
-    env = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
+    env = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
                             config.num_players_train)
 
-    marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
+    marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
                             config.num_players_train)
-    marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
+    marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
                             config.num_players_test)
     env_train_adhoc = AsyncVectorEnv(
         [
@@ -122,7 +122,7 @@ def run(config):
 
     maddpg = MADDPG.init_from_env(env, alg=config.alg,
                                   tau=config.tau,
-                                  lr=config.lr)
+                                  lr=config.lr, reg=config.reg)
     replay_buffer = ReplayBuffer(config.buffer_length, maddpg.nagents,
                                  [obsp.shape[0] for obsp in env.observation_space],
                                  [acsp.shape[0] if isinstance(acsp, Box) else acsp.n
@@ -308,9 +308,9 @@ def run(config):
         if (ep_i + 1) % config.saving_frequency == 0:
             save_id = 'params_%i.pt' % (ep_i + 1)
             maddpg.save(model_dir / curr_run / save_id)
-            marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
+            marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
                                                    config.num_players_train)
-            marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
+            marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
                                                   config.num_players_test)
             # Train env
             avgs = []
@@ -493,7 +493,8 @@ if __name__ == '__main__':
     #parser.add_argument("--save_interval", default=1000, type=int)
     parser.add_argument("--hidden_dim", default=64, type=int)
     parser.add_argument("--lr", default=0.01, type=float)
-    parser.add_argument("--tau", default=0.01, type=float)
+    parser.add_argument("--tau", default=0.001, type=float)
+    parser.add_argument("--reg", default=1.0, type=float)
     parser.add_argument("--alg",
                         default="MADDPG", type=str,
                         choices=['MADDPG', 'DDPG'])
