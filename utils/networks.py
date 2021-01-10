@@ -6,7 +6,7 @@ class MLPNetwork(nn.Module):
     MLP network (can be used as value or policy)
     """
     def __init__(self, input_dim, out_dim, hidden_dim=64, nonlin=F.relu,
-                 constrain_out=False, norm_in=True, discrete_action=True,
+                 constrain_out=False, norm_in=False, discrete_action=True,
                  n_type="policy"):
         """
         Inputs:

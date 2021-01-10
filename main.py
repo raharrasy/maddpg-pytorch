@@ -97,17 +97,17 @@ def run(config):
     np.random.seed(config.seed)
     if not USE_CUDA:
         torch.set_num_threads(config.n_training_threads)
-    env = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+    env = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
                             config.num_players_train)
 
-    marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+    marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
                             config.num_players_train)
-    marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+    marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
                             config.num_players_test)
     env_train_adhoc = AsyncVectorEnv(
         [
          make_env_adhoc('Foraging-8x8-3f-v0', i,
-         config.seed, config.num_players_train, True)
+         0, config.num_players_train, True)
          for i in range(config.n_rollout_threads)
         ]
     )
@@ -115,7 +115,7 @@ def run(config):
     env_eval_adhoc = AsyncVectorEnv(
         [
           make_env_adhoc('Foraging-8x8-3f-v0', i,
-          config.seed, config.num_players_test, True)
+          0, config.num_players_test, True)
           for i in range(config.n_rollout_threads)
         ]
     )
@@ -308,9 +308,9 @@ def run(config):
         if (ep_i + 1) % config.saving_frequency == 0:
             save_id = 'params_%i.pt' % (ep_i + 1)
             maddpg.save(model_dir / curr_run / save_id)
-            marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+            marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
                                                    config.num_players_train)
-            marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+            marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, 0,
                                                   config.num_players_test)
             # Train env
             avgs = []
@@ -387,7 +387,7 @@ def run(config):
             env_train_adhoc = AsyncVectorEnv(
                 [
                     make_env_adhoc('Foraging-8x8-3f-v0', i,
-                                   config.seed, config.num_players_train, True)
+                                   0, config.num_players_train, True)
                     for i in range(config.n_training_threads)
                 ]
             )
@@ -395,7 +395,7 @@ def run(config):
             env_eval_adhoc = AsyncVectorEnv(
                 [
                     make_env_adhoc('Foraging-8x8-3f-v0', i,
-                                   config.seed, config.num_players_test, True)
+                                   0, config.num_players_test, True)
                     for i in range(config.n_training_threads)
                 ]
             )
