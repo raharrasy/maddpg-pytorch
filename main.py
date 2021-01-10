@@ -299,11 +299,10 @@ def run(config):
                     maddpg.prep_training(device='gpu')
                 else:
                     maddpg.prep_training(device='cpu')
-                for u_i in range(config.n_rollout_threads):
-                    for a_i in range(maddpg.nagents):
-                        sample = replay_buffer.pop_all(to_gpu=USE_CUDA)
-                        maddpg.update(sample, a_i, logger=logger)
-                    maddpg.update_all_targets()
+                sample = replay_buffer.pop_all(to_gpu=USE_CUDA)
+                for a_i in range(maddpg.nagents):
+                    maddpg.update(sample, a_i, logger=logger)
+                maddpg.update_all_targets()
                 maddpg.prep_rollouts(device='cpu')
 
         if (ep_i + 1) % config.saving_frequency == 0:
