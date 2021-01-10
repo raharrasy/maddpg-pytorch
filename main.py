@@ -64,7 +64,7 @@ def make_env_adhoc(env_id, rank,  seed=1285, effective_max_num_players=3, with_s
     return _init
 
 def obs_adhoc_postprocess(obs):
-    return torch.cat([obs, torch.ones([obs.shape[0], 1])], axis=-1)
+    return torch.cat([obs.float(), torch.ones([obs.shape[0], 1]).float()], axis=-1)
 
 def convert_action(one_hot_acts):
     return np.argmax(np.concatenate([
@@ -128,7 +128,7 @@ def run(config):
                                  [acsp.shape[0] if isinstance(acsp, Box) else acsp.n
                                   for acsp in env.action_space])
 
-    maddpg.save(model_dir / "params_0.pt")
+    maddpg.save(model_dir / curr_run / "params_0.pt")
 
     # Train env
     avgs = []
@@ -216,7 +216,6 @@ def run(config):
         ], axis=0)
         # rearrange actions to be per environment
         env_action = convert_action(agent_actions)
-        print(env_action)
 
         # Env step
         next_obs, rewards, dones, infos = env_train_adhoc.step(env_action)
@@ -248,7 +247,6 @@ def run(config):
         ], axis=0)
         # rearrange actions to be per environment
         env_action = convert_action(agent_actions)
-        print(env_action)
 
         # Env step
         next_obs, rewards, dones, infos = env_eval_adhoc.step(env_action)
@@ -308,162 +306,162 @@ def run(config):
                     maddpg.update_all_targets()
                 maddpg.prep_rollouts(device='cpu')
 
-        maddpg.save(model_dir / "params_"+str(ep_i)+".pt")
-        marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
-                                               config.num_players_train)
-        marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
-                                              config.num_players_test)
-        # Train env
-        avgs = []
-        maddpg.prep_rollouts(device='cpu')
-        num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
-        obs = marl_env_train.reset()
-        while (all([k < config.eval_eps for k in num_dones])):
-            torch_obs = [Variable(torch.Tensor(np.vstack(obs[:, i])),
-                                  requires_grad=False)
-                         for i in range(maddpg.nagents)]
+        if (ep_i + 1) % config.saving_frequency == 0:
+            save_id = 'params_%i.pt' % (ep_i + 1)
+            maddpg.save(model_dir / curr_run / save_id)
+            marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                                   config.num_players_train)
+            marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                                  config.num_players_test)
+            # Train env
+            avgs = []
+            maddpg.prep_rollouts(device='cpu')
+            num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
+            obs = marl_env_train.reset()
+            while (all([k < config.eval_eps for k in num_dones])):
+                torch_obs = [Variable(torch.Tensor(np.vstack(obs[:, i])),
+                                      requires_grad=False)
+                             for i in range(maddpg.nagents)]
 
-            # Agent computes actions
-            torch_agent_actions = maddpg.step(torch_obs)
-            agent_actions = [ac.data.numpy() for ac in torch_agent_actions]
-            # rearrange actions to be per environment
-            actions = [[ac[i] for ac in agent_actions] for i in range(config.n_rollout_threads)]
-            env_action = convert_action(actions)
+                # Agent computes actions
+                torch_agent_actions = maddpg.step(torch_obs)
+                agent_actions = [ac.data.numpy() for ac in torch_agent_actions]
+                # rearrange actions to be per environment
+                actions = [[ac[i] for ac in agent_actions] for i in range(config.n_rollout_threads)]
+                env_action = convert_action(actions)
 
-            # Env step
-            next_obs, rewards, dones, infos = marl_env_train.step(env_action)
-            average_step_rews = compute_average_reward(obs, rewards)
-            dones = [any(x) for x in dones]
+                # Env step
+                next_obs, rewards, dones, infos = marl_env_train.step(env_action)
+                average_step_rews = compute_average_reward(obs, rewards)
+                dones = [any(x) for x in dones]
 
-            per_worker_rew = [k + l for k, l in zip(per_worker_rew, average_step_rews)]
-            obs = next_obs
+                per_worker_rew = [k + l for k, l in zip(per_worker_rew, average_step_rews)]
+                obs = next_obs
 
-            for idx, flag in enumerate(dones):
-                if flag:
-                    if num_dones[idx] < config.eval_eps:
-                        num_dones[idx] += 1
-                        avgs.append(per_worker_rew[idx])
-                    per_worker_rew[idx] = 0
+                for idx, flag in enumerate(dones):
+                    if flag:
+                        if num_dones[idx] < config.eval_eps:
+                            num_dones[idx] += 1
+                            avgs.append(per_worker_rew[idx])
+                        per_worker_rew[idx] = 0
 
-        print("Finished marl train with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
-        marl_env_train.close()
-        logger.add_scalar('Rewards/marl_train_set', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
+            print("Finished marl train with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
+            marl_env_train.close()
+            logger.add_scalar('Rewards/marl_train_set', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
 
-        # Test env
-        avgs = []
-        maddpg.prep_rollouts(device='cpu')
-        num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
-        obs = marl_env_test.reset()
-        while (all([k < config.eval_eps for k in num_dones])):
-            torch_obs = [Variable(torch.Tensor(np.vstack(obs[:, i])),
-                                  requires_grad=False)
-                         for i in range(maddpg.nagents)]
+            # Test env
+            avgs = []
+            maddpg.prep_rollouts(device='cpu')
+            num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
+            obs = marl_env_test.reset()
+            while (all([k < config.eval_eps for k in num_dones])):
+                torch_obs = [Variable(torch.Tensor(np.vstack(obs[:, i])),
+                                      requires_grad=False)
+                             for i in range(maddpg.nagents)]
 
-            # Agent computes actions
-            torch_agent_actions = maddpg.step(torch_obs)
-            agent_actions = [ac.data.numpy() for ac in torch_agent_actions]
-            # rearrange actions to be per environment
-            actions = [[ac[i] for ac in agent_actions] for i in range(config.n_rollout_threads)]
-            env_action = convert_action(actions)
+                # Agent computes actions
+                torch_agent_actions = maddpg.step(torch_obs)
+                agent_actions = [ac.data.numpy() for ac in torch_agent_actions]
+                # rearrange actions to be per environment
+                actions = [[ac[i] for ac in agent_actions] for i in range(config.n_rollout_threads)]
+                env_action = convert_action(actions)
 
-            # Env step
-            next_obs, rewards, dones, infos = marl_env_test.step(env_action)
-            average_step_rews = compute_average_reward(obs, rewards)
-            dones = [any(x) for x in dones]
+                # Env step
+                next_obs, rewards, dones, infos = marl_env_test.step(env_action)
+                average_step_rews = compute_average_reward(obs, rewards)
+                dones = [any(x) for x in dones]
 
-            per_worker_rew = [k + l for k, l in zip(per_worker_rew, average_step_rews)]
-            obs = next_obs
+                per_worker_rew = [k + l for k, l in zip(per_worker_rew, average_step_rews)]
+                obs = next_obs
 
-            for idx, flag in enumerate(dones):
-                if flag:
-                    if num_dones[idx] < config.eval_eps:
-                        num_dones[idx] += 1
-                        avgs.append(per_worker_rew[idx])
-                    per_worker_rew[idx] = 0
+                for idx, flag in enumerate(dones):
+                    if flag:
+                        if num_dones[idx] < config.eval_eps:
+                            num_dones[idx] += 1
+                            avgs.append(per_worker_rew[idx])
+                        per_worker_rew[idx] = 0
 
-        print("Finished marl eval with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
-        marl_env_test.close()
-        logger.add_scalar('Rewards/marl_eval_set', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
+            print("Finished marl eval with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
+            marl_env_test.close()
+            logger.add_scalar('Rewards/marl_eval_set', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
 
-        env_train_adhoc = AsyncVectorEnv(
-            [
-                make_env_adhoc('Foraging-8x8-3f-v0', i,
-                               config.seed, config.num_players_train, True)
-                for i in range(config.n_training_threads)
-            ]
-        )
+            env_train_adhoc = AsyncVectorEnv(
+                [
+                    make_env_adhoc('Foraging-8x8-3f-v0', i,
+                                   config.seed, config.num_players_train, True)
+                    for i in range(config.n_training_threads)
+                ]
+            )
 
-        env_eval_adhoc = AsyncVectorEnv(
-            [
-                make_env_adhoc('Foraging-8x8-3f-v0', i,
-                               config.seed, config.num_players_test, True)
-                for i in range(config.n_training_threads)
-            ]
-        )
+            env_eval_adhoc = AsyncVectorEnv(
+                [
+                    make_env_adhoc('Foraging-8x8-3f-v0', i,
+                                   config.seed, config.num_players_test, True)
+                    for i in range(config.n_training_threads)
+                ]
+            )
 
-        avgs = []
-        maddpg.prep_rollouts(device='cpu')
-        num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
-        obs = env_train_adhoc.reset()
-        sampled_agents = [random.randint(0, maddpg.nagents - 1) for _ in range(config.n_rollout_threads)]
-        while (all([k < config.eval_eps for k in num_dones])):
-            torch_obs = obs_adhoc_postprocess(torch.tensor(obs['all_information']))
+            avgs = []
+            maddpg.prep_rollouts(device='cpu')
+            num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
+            obs = env_train_adhoc.reset()
+            sampled_agents = [random.randint(0, maddpg.nagents - 1) for _ in range(config.n_rollout_threads)]
+            while (all([k < config.eval_eps for k in num_dones])):
+                torch_obs = obs_adhoc_postprocess(torch.tensor(obs['all_information']))
 
-            # Agent computes actions
-            agent_actions = np.concatenate([
-                maddpg.indiv_step(ob, a_idx).data.numpy() for ob, a_idx in zip(torch_obs, sampled_agents)
-            ], axis=0)
-            # rearrange actions to be per environment
-            env_action = convert_action(agent_actions)
-            print(env_action)
+                # Agent computes actions
+                agent_actions = np.concatenate([
+                    maddpg.indiv_step(ob, a_idx).data.numpy() for ob, a_idx in zip(torch_obs, sampled_agents)
+                ], axis=0)
+                # rearrange actions to be per environment
+                env_action = convert_action(agent_actions)
 
-            # Env step
-            next_obs, rewards, dones, infos = env_train_adhoc.step(env_action)
-            per_worker_rew = [k + l for k, l in zip(per_worker_rew, rewards)]
-            obs = next_obs
-            for idx, flag in enumerate(dones):
-                if flag:
-                    if num_dones[idx] < config.eval_eps:
-                        num_dones[idx] += 1
-                        avgs.append(per_worker_rew[idx])
-                        sampled_agents[idx] = random.randint(0, maddpg.nagents - 1)
-                    per_worker_rew[idx] = 0
+                # Env step
+                next_obs, rewards, dones, infos = env_train_adhoc.step(env_action)
+                per_worker_rew = [k + l for k, l in zip(per_worker_rew, rewards)]
+                obs = next_obs
+                for idx, flag in enumerate(dones):
+                    if flag:
+                        if num_dones[idx] < config.eval_eps:
+                            num_dones[idx] += 1
+                            avgs.append(per_worker_rew[idx])
+                            sampled_agents[idx] = random.randint(0, maddpg.nagents - 1)
+                        per_worker_rew[idx] = 0
 
-        print("Finished ad hoc train with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
-        env_train_adhoc.close()
-        logger.add_scalar('Rewards/adhoc_train', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
+            print("Finished ad hoc train with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
+            env_train_adhoc.close()
+            logger.add_scalar('Rewards/adhoc_train', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
 
-        avgs = []
-        maddpg.prep_rollouts(device='cpu')
-        num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
-        obs = env_eval_adhoc.reset()
-        sampled_agents = [random.randint(0, maddpg.nagents - 1) for _ in range(config.n_rollout_threads)]
-        while (all([k < config.eval_eps for k in num_dones])):
-            torch_obs = obs_adhoc_postprocess(torch.tensor(obs['all_information']))
+            avgs = []
+            maddpg.prep_rollouts(device='cpu')
+            num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
+            obs = env_eval_adhoc.reset()
+            sampled_agents = [random.randint(0, maddpg.nagents - 1) for _ in range(config.n_rollout_threads)]
+            while (all([k < config.eval_eps for k in num_dones])):
+                torch_obs = obs_adhoc_postprocess(torch.tensor(obs['all_information']))
 
-            # Agent computes actions
-            agent_actions = np.concatenate([
-                maddpg.indiv_step(ob, a_idx).data.numpy() for ob, a_idx in zip(torch_obs, sampled_agents)
-            ], axis=0)
-            # rearrange actions to be per environment
-            env_action = convert_action(agent_actions)
-            print(env_action)
+                # Agent computes actions
+                agent_actions = np.concatenate([
+                    maddpg.indiv_step(ob, a_idx).data.numpy() for ob, a_idx in zip(torch_obs, sampled_agents)
+                ], axis=0)
+                # rearrange actions to be per environment
+                env_action = convert_action(agent_actions)
 
-            # Env step
-            next_obs, rewards, dones, infos = env_eval_adhoc.step(env_action)
-            per_worker_rew = [k + l for k, l in zip(per_worker_rew, rewards)]
-            obs = next_obs
-            for idx, flag in enumerate(dones):
-                if flag:
-                    if num_dones[idx] < config.eval_eps:
-                        num_dones[idx] += 1
-                        avgs.append(per_worker_rew[idx])
-                        sampled_agents[idx] = random.randint(0, maddpg.nagents - 1)
-                    per_worker_rew[idx] = 0
+                # Env step
+                next_obs, rewards, dones, infos = env_eval_adhoc.step(env_action)
+                per_worker_rew = [k + l for k, l in zip(per_worker_rew, rewards)]
+                obs = next_obs
+                for idx, flag in enumerate(dones):
+                    if flag:
+                        if num_dones[idx] < config.eval_eps:
+                            num_dones[idx] += 1
+                            avgs.append(per_worker_rew[idx])
+                            sampled_agents[idx] = random.randint(0, maddpg.nagents - 1)
+                        per_worker_rew[idx] = 0
 
-        print("Finished ad hoc test with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
-        env_eval_adhoc.close()
-        logger.add_scalar('Rewards/adhoc_test', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
+            print("Finished ad hoc test with rewards " + str((sum(avgs) + 0.0) / len(avgs)))
+            env_eval_adhoc.close()
+            logger.add_scalar('Rewards/adhoc_test', (sum(avgs) + 0.0) / len(avgs), ep_i+1)
 
     env.close()
     logger.export_scalars_to_json(str(log_dir / 'summary.json'))
@@ -486,6 +484,7 @@ if __name__ == '__main__':
     parser.add_argument("--eps_length", default=200, type=int)
     parser.add_argument("--steps_per_update", default=4, type=int)
     parser.add_argument("--eval_eps", default=5, type=int)
+    parser.add_argument("--saving_frequency", default=50, type=int)
     parser.add_argument("--batch_size",
                         default=1024, type=int,
                         help="Batch size for model training")
