@@ -272,8 +272,8 @@ def run(config):
         # obs.shape = (n_rollout_threads, nagent)(nobs), nobs differs per agent so not tensor
         maddpg.prep_rollouts(device='cpu')
 
-        #explr_pct_remaining = max(0, config.n_exploration_eps - ep_i) / config.n_exploration_eps
-        #maddpg.scale_noise(config.final_noise_scale + (config.init_noise_scale - config.final_noise_scale) * explr_pct_remaining)
+        explr_pct_remaining = max(0, config.n_exploration_eps - ep_i) / config.n_exploration_eps
+        maddpg.scale_noise(config.final_noise_scale + (config.init_noise_scale - config.final_noise_scale) * explr_pct_remaining)
         #maddpg.reset_noise()
 
         for et_i in range(config.eps_length):
@@ -487,9 +487,9 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size",
                         default=1024, type=int,
                         help="Batch size for model training")
-    #parser.add_argument("--n_exploration_eps", default=25000, type=int)
-    #parser.add_argument("--init_noise_scale", default=0.3, type=float)
-    #parser.add_argument("--final_noise_scale", default=0.0, type=float)
+    parser.add_argument("--n_exploration_eps", default=2000, type=int)
+    parser.add_argument("--init_noise_scale", default=1.0, type=float)
+    parser.add_argument("--final_noise_scale", default=0.05, type=float)
     #parser.add_argument("--save_interval", default=1000, type=int)
     parser.add_argument("--hidden_dim", default=64, type=int)
     parser.add_argument("--lr_crit", default=0.001, type=float)

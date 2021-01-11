@@ -13,7 +13,7 @@ class MADDPG(object):
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
     def __init__(self, agent_init_params, alg_types,
-                 gamma=0.95, tau=0.01, lr_crit=0.01, lr_pol=0.01,
+                 gamma=0.99, tau=0.01, lr_crit=0.01, lr_pol=0.01,
                  discrete_action=False, reg=0.01):
         """
         Inputs:
@@ -58,8 +58,8 @@ class MADDPG(object):
         return [a.target_policy for a in self.agents]
 
     def mask_actions(self, action, a_id):
-        action_mask = torch.tensor([[-9999999 * (1 - a) for a in self.action_masks[a_id]]])
-        return action + action_mask
+        action[:,-1] = float('-inf')
+        return action
 
     def replace_missing_acts(self, obs, acts):
         action = torch.cat((acts, torch.zeros(acts.shape[0], 1)), axis=-1)
@@ -267,7 +267,7 @@ class MADDPG(object):
 
     @classmethod
     def init_from_env(cls, env, alg="MADDPG",
-                      gamma=0.95, tau=0.01, lr_crit=0.01, lr_pol=0.01, reg=0.01):
+                      gamma=0.99, tau=0.01, lr_crit=0.01, lr_pol=0.01, reg=0.01):
         """
         Instantiate instance of this class from multi-agent environment
         """

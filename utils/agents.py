@@ -13,9 +13,9 @@ class DDPGAgent(object):
     critic, exploration noise)
     """
     def __init__(self, num_in_pol, num_out_pol, num_in_critic,
-                 #hidden_dim_pol=[100,100,100,70,25],
-                 hidden_dim_pol=[128,128],
-                 hidden_dim_crit=[128, 128],
+                 hidden_dim_pol=[100,100,100,70,25],
+                 #hidden_dim_pol=[128,128],
+                 hidden_dim_crit=[300, 256],
                  lr_crit=0.01, lr_pol=0.01, discrete_action=True):
         """
         Inputs:
@@ -28,14 +28,14 @@ class DDPGAgent(object):
         self.action_mask[-1] = 0
         self.policy = MLPNetwork(num_in_pol, num_out_pol,
                                  hidden_dim=hidden_dim_pol,
-                                 constrain_out=True, n_type="critic",
+                                 constrain_out=True,
                                  discrete_action=discrete_action)
         self.critic = MLPNetwork(num_in_critic, 1,
                                  hidden_dim=hidden_dim_crit,
                                  constrain_out=False, n_type="critic")
         self.target_policy = MLPNetwork(num_in_pol, num_out_pol,
                                         hidden_dim=hidden_dim_pol,
-                                        constrain_out=True, n_type="critic",
+                                        constrain_out=True,
                                         discrete_action=discrete_action)
         self.target_critic = MLPNetwork(num_in_critic, 1,
                                         hidden_dim=hidden_dim_crit,
@@ -70,13 +70,16 @@ class DDPGAgent(object):
             action (PyTorch Variable): Actions for this agent
         """
         action = self.policy(obs)
-        act_mask = torch.tensor([[-9999999 * (1 - a) for a in self.action_mask]])
-        
+        action[:,-1] = float('-inf')
         if self.discrete_action:
             if explore:
-                action = gumbel_softmax(action + act_mask, hard=True)
+                all_possible_acts = torch.cat([torch.eye(action.shape[-1]-1), torch.zeros([action.shape[-1]-1, 1])], axis=-1)
+                #action = gumbel_softmax(action, hard=True)
+                for idx, _ in enumerate(action):
+                    if np.random.uniform() < self.exploration:
+                        action[idx] = all_possible_acts[np.random.randint(action.shape[-1]-1)]
             else:
-                action = onehot_from_logits(action + act_mask)
+                action = onehot_from_logits(action)
         else:  # continuous action
             if explore:
                 action += Variable(Tensor(self.exploration.noise()),
