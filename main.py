@@ -121,8 +121,8 @@ def run(config):
     )
 
     maddpg = MADDPG.init_from_env(env, alg=config.alg,
-                                  tau=config.tau,
-                                  lr=config.lr, reg=config.reg)
+                                  tau=config.tau, lr_pol = config.lr_pol,
+                                  lr_crit=config.lr_crit, reg=config.reg)
     replay_buffer = ReplayBuffer(config.buffer_length, maddpg.nagents,
                                  [obsp.shape[0] for obsp in env.observation_space],
                                  [acsp.shape[0] if isinstance(acsp, Box) else acsp.n
@@ -492,7 +492,8 @@ if __name__ == '__main__':
     #parser.add_argument("--final_noise_scale", default=0.0, type=float)
     #parser.add_argument("--save_interval", default=1000, type=int)
     parser.add_argument("--hidden_dim", default=64, type=int)
-    parser.add_argument("--lr", default=0.01, type=float)
+    parser.add_argument("--lr_crit", default=0.001, type=float)
+    parser.add_argument("--lr_pol", default=0.001, type=float)
     parser.add_argument("--tau", default=0.001, type=float)
     parser.add_argument("--reg", default=1.0, type=float)
     parser.add_argument("--alg",

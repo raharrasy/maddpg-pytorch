@@ -14,8 +14,8 @@ class DDPGAgent(object):
     """
     def __init__(self, num_in_pol, num_out_pol, num_in_critic,
                  hidden_dim_pol=[100,100,100,70,25],
-                 hidden_dim_crit=[64, 64],
-                 lr=0.01, discrete_action=True):
+                 hidden_dim_crit=[128, 128],
+                 lr_crit=0.01, lr_pol=0.01, discrete_action=True):
         """
         Inputs:
             num_in_pol (int): number of dimensions for policy input
@@ -39,8 +39,8 @@ class DDPGAgent(object):
                                         constrain_out=False, n_type="critic")
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
-        self.policy_optimizer = Adam(self.policy.parameters(), lr=lr)
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=lr)
+        self.policy_optimizer = Adam(self.policy.parameters(), lr=lr_pol)
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=lr_crit)
         if not discrete_action:
             self.exploration = OUNoise(num_out_pol)
         else:
@@ -68,6 +68,7 @@ class DDPGAgent(object):
         """
         action = self.policy(obs)
         if self.discrete_action:
+            print("Act : ",action)
             if explore:
                 action = gumbel_softmax(action, hard=True)
             else:

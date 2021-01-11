@@ -13,7 +13,7 @@ class MADDPG(object):
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
     def __init__(self, agent_init_params, alg_types,
-                 gamma=0.95, tau=0.01, lr=0.01,
+                 gamma=0.95, tau=0.01, lr_crit=0.01, lr_pol=0.01,
                  discrete_action=False, reg=0.01):
         """
         Inputs:
@@ -32,13 +32,14 @@ class MADDPG(object):
         """
         self.nagents = len(alg_types)
         self.alg_types = alg_types
-        self.agents = [DDPGAgent(lr=lr, discrete_action=discrete_action,
+        self.agents = [DDPGAgent(lr_crit=lr_crit, lr_pol=lr_pol, discrete_action=discrete_action,
                                  **params)
                        for params in agent_init_params]
         self.agent_init_params = agent_init_params
         self.gamma = gamma
         self.tau = tau
-        self.lr = lr
+        self.lr_crit = lr_crit
+        self.lr_pol = lr_pol
         self.reg = reg
         self.discrete_action = discrete_action
         self.pol_dev = 'cpu'  # device for policies
@@ -133,8 +134,8 @@ class MADDPG(object):
         # Add also if n_obs[-1] == None in case agent is dead
         target_value = (rews[agent_i].view(-1, 1) + self.gamma *
                         curr_agent.target_critic(trgt_vf_in) *
-                        (1 - dones[agent_i].view(-1, 1)) *
-                        (1 - torch.tensor(next_obs[agent_i][:,-1] == -1).view(-1, 1).float()))
+                        (1 - dones[agent_i].view(-1, 1)))
+#                        (1 - torch.tensor(next_obs[agent_i][:,-1] == -1).view(-1, 1).float()))
 
         if self.alg_types[agent_i] == 'MADDPG':
             vf_in = torch.cat((*obs, *acs), dim=1)
@@ -260,7 +261,7 @@ class MADDPG(object):
 
     @classmethod
     def init_from_env(cls, env, alg="MADDPG",
-                      gamma=0.95, tau=0.01, lr=0.01, reg=0.01):
+                      gamma=0.95, tau=0.01, lr_crit=0.01, lr_pol=0.01, reg=0.01):
         """
         Instantiate instance of this class from multi-agent environment
         """
@@ -288,7 +289,8 @@ class MADDPG(object):
             agent_init_params.append({'num_in_pol': num_in_pol,
                                       'num_out_pol': num_out_pol-1,
                                       'num_in_critic': num_in_critic})
-        init_dict = {'gamma': gamma, 'tau': tau, 'lr': lr,
+        init_dict = {'gamma': gamma, 'tau': tau, 'lr_crit': lr_crit,
+                     'lr_pol': lr_pol,
                      'alg_types': alg_types,
                      'agent_init_params': agent_init_params,
                      'discrete_action': discrete_action, 'reg': reg}
