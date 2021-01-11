@@ -86,7 +86,6 @@ def gumbel_softmax(logits, temperature=1.0, hard=False):
       be a probabilitiy distribution that sums to 1 across classes
     """
     y = gumbel_softmax_sample(logits, temperature)
-    print("gumbel : ",y)
     if hard:
         y_hard = onehot_from_logits(y)
         y = (y_hard - y).detach() + y
