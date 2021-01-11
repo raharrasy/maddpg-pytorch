@@ -57,10 +57,6 @@ class MADDPG(object):
     def target_policies(self):
         return [a.target_policy for a in self.agents]
 
-    def mask_actions(self, action, a_id):
-        action[:,-1] = float('-inf')
-        return action
-
     def replace_missing_acts(self, obs, acts):
         action = torch.cat((acts, torch.zeros(acts.shape[0], 1)), axis=-1)
         # Add default action if agent is not in env
@@ -95,8 +91,7 @@ class MADDPG(object):
         Outputs:
             actions: List of actions for each agent
         """
-        return [a.step(obs, explore=explore) for a, obs in zip(self.agents,
-                                                               observations)]
+        return [a.step(obs, explore=explore) for a, obs in zip(self.agents, observations)]
 
     def update(self, sample, agent_i, parallel=False, logger=None):
         """
@@ -119,8 +114,8 @@ class MADDPG(object):
             if self.discrete_action: # one-hot encode action
                 all_trgt_acs = [pi(nobs) for pi, nobs in
                                 zip(self.target_policies, next_obs)]
-                all_trgt_acs = [onehot_from_logits(self.mask_actions(logit, idx)) for idx, logit in enumerate(all_trgt_acs)]
-                #all_trgt_acs = [self.replace_missing_acts(nob, act) for nob, act in zip(next_obs, all_trgt_acs)]
+                #all_trgt_acs = [onehot_from_logits(self.mask_actions(logit, idx)) for idx, logit in enumerate(all_trgt_acs)]
+                all_trgt_acs = [self.replace_missing_acts(nob, act) for nob, act in zip(next_obs, all_trgt_acs)]
             else:
                 all_trgt_acs = [pi(nobs) for pi, nobs in zip(self.target_policies,
                                                              next_obs)]
@@ -140,8 +135,8 @@ class MADDPG(object):
         # Add also if n_obs[-1] == None in case agent is dead
         target_value = (rews[agent_i].view(-1, 1) + self.gamma *
                         curr_agent.target_critic(trgt_vf_in) *
-                        (1 - dones[agent_i].view(-1, 1)))
-#                        (1 - torch.tensor(next_obs[agent_i][:,-1] == -1).view(-1, 1).float()))
+                        (1 - dones[agent_i].view(-1, 1)) *
+                        (1 - torch.tensor(next_obs[agent_i][:,-1] == -1).view(-1, 1).float()))
 
         if self.alg_types[agent_i] == 'MADDPG':
             vf_in = torch.cat((*obs, *acs), dim=1)
@@ -164,9 +159,9 @@ class MADDPG(object):
             # through discrete categorical samples, but I'm not sure if that is
             # correct since it removes the assumption of a deterministic policy for
             # DDPG. Regardless, discrete policies don't seem to learn properly without it.
-            curr_pol_out = self.mask_actions(curr_agent.policy(obs[agent_i]), agent_i)
+            curr_pol_out = curr_agent.policy(obs[agent_i])
             curr_pol_vf_in = gumbel_softmax(curr_pol_out, hard=True)
-            #curr_pol_vf_in = self.replace_missing_acts(obs[agent_i], curr_pol_vf_in)
+            curr_pol_vf_in = self.replace_missing_acts(obs[agent_i], curr_pol_vf_in)
         else:
             curr_pol_out = curr_agent.policy(obs[agent_i])
             curr_pol_vf_in = curr_pol_out
@@ -176,7 +171,7 @@ class MADDPG(object):
                 if i == agent_i:
                     all_pol_acs.append(curr_pol_vf_in)
                 elif self.discrete_action:
-                    all_pol_acs.append(onehot_from_logits(self.mask_actions(pi(ob), i)))
+                    all_pol_acs.append(self.replace_missing_acts(ob, onehot_from_logits(pi(ob))))
                 else:
                     all_pol_acs.append(pi(ob))
             vf_in = torch.cat((*obs, *all_pol_acs), dim=1)
@@ -184,15 +179,15 @@ class MADDPG(object):
             vf_in = torch.cat((obs[agent_i], curr_pol_vf_in),
                               dim=1)
 
-        #valid_values = obs[agent_i][:, -1] != -1
-        #vf_in = vf_in[valid_values]
+        valid_values = obs[agent_i][:, -1] != -1
+        vf_in = vf_in[valid_values]
         pol_loss = 0
         real_pol_loss = 0
         reg_pol_loss = 0
         if vf_in.shape[0] != 0:
             real_pol_loss = -curr_agent.critic(vf_in).mean()
             pol_loss = real_pol_loss
-            reg_pol_loss = (curr_pol_out**2).mean() * self.reg
+            reg_pol_loss = (curr_pol_out[valid_values]**2).mean() * self.reg
             pol_loss += reg_pol_loss
             pol_loss.backward()
             torch.nn.utils.clip_grad_norm(curr_agent.policy.parameters(), 0.5)
@@ -293,7 +288,7 @@ class MADDPG(object):
             else:
                 num_in_critic = obsp.shape[0] + get_shape(acsp)
             agent_init_params.append({'num_in_pol': num_in_pol,
-                                      'num_out_pol': num_out_pol,
+                                      'num_out_pol': num_out_pol-1,
                                       'num_in_critic': num_in_critic})
         init_dict = {'gamma': gamma, 'tau': tau, 'lr_crit': lr_crit,
                      'lr_pol': lr_pol,

@@ -70,14 +70,14 @@ class DDPGAgent(object):
             action (PyTorch Variable): Actions for this agent
         """
         action = self.policy(obs)
-        action[:,-1] = float('-inf')
+        #action[:,-1] = float('-inf')
         if self.discrete_action:
             if explore:
-                all_possible_acts = torch.cat([torch.eye(action.shape[-1]-1), torch.zeros([action.shape[-1]-1, 1])], axis=-1)
+                all_possible_acts = torch.eye(action.shape[-1])
                 #action = gumbel_softmax(action, hard=True)
                 for idx, _ in enumerate(action):
                     if np.random.uniform() < self.exploration:
-                        action[idx] = all_possible_acts[np.random.randint(action.shape[-1]-1)]
+                        action[idx] = all_possible_acts[np.random.randint(action.shape[-1])]
             else:
                 action = onehot_from_logits(action)
         else:  # continuous action
@@ -86,11 +86,11 @@ class DDPGAgent(object):
                                    requires_grad=False)
             action = action.clamp(-1, 1)
 
-        #action = torch.cat((action, torch.zeros(action.shape[0],1)), axis=-1)
+        action = torch.cat((action, torch.zeros(action.shape[0],1)), axis=-1)
         # Add default action if agent is not in env
-        #missing_act = torch.zeros(action.shape[-1])
-        #missing_act[-1] = 1
-        #action[obs[:, -1] == -1] = missing_act
+        missing_act = torch.zeros(action.shape[-1])
+        missing_act[-1] = 1
+        action[obs[:, -1] == -1] = missing_act
 
         return action
 
