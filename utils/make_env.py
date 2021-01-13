@@ -62,3 +62,17 @@ def make_env_lbf(env_id, seed=1285, effective_max_num_players=3, with_shuffle=Tr
 
     return _init
 
+def make_env_wolf(env_id, seed=1285, close_penalty=0.5, implicit_max_player_num=3, max_player_num=5):
+    import gym
+    import Wolfpack_gym
+    def _init():
+        env = gym.make(
+            env_id, seed=seed,
+            num_players=implicit_max_player_num,
+            close_penalty=close_penalty,
+            implicit_max_player_num=implicit_max_player_num,
+            max_player_num=max_player_num
+        )
+        return env
+
+    return _init
