@@ -1,12 +1,13 @@
 import numpy as np
 from torch import Tensor
 from torch.autograd import Variable
+import torch
 
 class ReplayBuffer(object):
     """
     Replay Buffer for multi-agent RL with parallel rollouts
     """
-    def __init__(self, max_steps, num_agents, obs_dims, ac_dims):
+    def __init__(self, max_steps, num_agents, obs_dims, ac_dims, type="dgn"):
         """
         Inputs:
             max_steps (int): Maximum number of timepoints to store in buffer
@@ -24,10 +25,14 @@ class ReplayBuffer(object):
         self.rew_buffs = []
         self.next_obs_buffs = []
         self.done_buffs = []
+        self.type = type
 
         for odim, adim in zip(obs_dims, ac_dims):
             self.obs_buffs.append(np.zeros((max_steps, odim)))
-            self.ac_buffs.append(np.zeros((max_steps, adim)))
+            if not type == "dgn":
+                self.ac_buffs.append(np.zeros((max_steps, adim)))
+            else:
+                self.ac_buffs.append(np.zeros((max_steps, 1)))
             self.rew_buffs.append(np.zeros(max_steps))
             self.next_obs_buffs.append(np.zeros((max_steps, odim)))
             self.done_buffs.append(np.zeros(max_steps))
@@ -45,7 +50,10 @@ class ReplayBuffer(object):
 
         for odim, adim in zip(self.obs_dims, self.ac_dims):
             self.obs_buffs.append(np.zeros((self.max_steps, odim)))
-            self.ac_buffs.append(np.zeros((self.max_steps, adim)))
+            if not self.type == "dgn":
+                self.ac_buffs.append(np.zeros((self.max_steps, adim)))
+            else:
+                self.ac_buffs.append(np.zeros((self.max_steps, 1)))
             self.rew_buffs.append(np.zeros(self.max_steps))
             self.next_obs_buffs.append(np.zeros((self.max_steps, odim)))
             self.done_buffs.append(np.zeros(self.max_steps))
@@ -114,6 +122,25 @@ class ReplayBuffer(object):
         else:
             cast = lambda x: Variable(Tensor(x), requires_grad=False)
 
+        if self.type == "dgn":
+            ret_obs = torch.cat(
+                [torch.unsqueeze(cast(self.obs_buffs[i]), dim=1) for i in range(self.num_agents)], dim=1
+            )
+            ret_ac = torch.cat(
+                [torch.unsqueeze(cast(self.ac_buffs[i]), dim=1) for i in range(self.num_agents)], dim=1
+            )
+            ret_rews = torch.cat(
+                [torch.unsqueeze(cast(self.rew_buffs[i]), dim=-1) for i in range(self.num_agents)], dim=-1
+            )
+            ret_next_obs = torch.cat(
+                [torch.unsqueeze(cast(self.next_obs_buffs[i]), dim=1) for i in range(self.num_agents)], dim=1
+            )
+            ret_dones = torch.cat(
+                [torch.unsqueeze(cast(self.done_buffs[i]), dim=-1) for i in range(self.num_agents)], dim=-1
+            )
+            self.reset()
+            return (ret_obs, ret_ac, ret_rews, ret_next_obs, ret_dones)
+
         if norm_rews:
             ret_rews = [cast((self.rew_buffs[i] -
                               self.rew_buffs[i][:self.filled_i].mean()) /
@@ -121,6 +148,7 @@ class ReplayBuffer(object):
                         for i in range(self.num_agents)]
         else:
             ret_rews = [cast(self.rew_buffs[i]) for i in range(self.num_agents)]
+
 
         ret_obs = [cast(self.obs_buffs[i]) for i in range(self.num_agents)]
         ret_ac = [cast(self.ac_buffs[i]) for i in range(self.num_agents)]
