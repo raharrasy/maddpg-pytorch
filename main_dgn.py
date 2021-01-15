@@ -1,7 +1,6 @@
 import argparse
 import torch
 import time
-import lbforaging
 import gym
 import os
 import random
@@ -493,7 +492,7 @@ if __name__ == '__main__':
     parser.add_argument("--close_penalty", default=0.5, type=float)
     parser.add_argument("--lr_pol", default=0.001, type=float)
     parser.add_argument("--tau", default=0.001, type=float)
-    parser.add_argument("--temp", default=0.001, type=float)
+    parser.add_argument("--temp", default=0.3, type=float)
     parser.add_argument("--reg", default=0.03, type=float)
     parser.add_argument("--alg",
                         default="DGN", type=str,

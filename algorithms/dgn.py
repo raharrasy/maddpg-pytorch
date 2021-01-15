@@ -104,7 +104,7 @@ class DGN(object):
         num_nodes = valid_flags.sum(dim=-1).tolist()
         valid_obs = obs[valid_flags]
         valid_rews = rews[valid_flags].view(-1,1)
-        valid_dones = rews[valid_flags].view(-1,1)
+        valid_dones = dones[valid_flags].view(-1,1)
 
         self.critic_optimizer.zero_grad()
         predicted_values, attention_weights = self.critic_net(valid_obs, num_nodes)
