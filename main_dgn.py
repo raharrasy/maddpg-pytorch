@@ -3,6 +3,7 @@ import torch
 import time
 import gym
 import os
+import sys
 import random
 import numpy as np
 from gym.spaces import Box, Discrete
@@ -103,6 +104,18 @@ def obs_adhoc_postprocess_wolf(obs_teammate, obs_prey):
     obs[obs[:,:,0] == -1] = -1 * np.ones(obs.shape[2])
     return torch.tensor(obs)
 
+def obs_adhoc_postprocess_lbf(obs):
+    obs = obs["all_information"]
+    obs_obj = obs[:,:9]
+    obs_teammate = obs[:, 9:]
+    num_agents = obs_teammate.shape[1]//3
+    dgn_obs = np.asarray([[np.roll(ob,-3*i)for i in range((len(ob)//3))]for ob in obs_teammate])
+    repeated_obs_obj = np.repeat(np.expand_dims(obs_obj, axis=1), num_agents, axis=1)
+    obs = np.concatenate([repeated_obs_obj, dgn_obs, torch.ones([dgn_obs.shape[0], dgn_obs.shape[1], 1])], axis = -1)
+
+    obs[obs[:,:,9] == -1] = -1 * np.ones(obs.shape[2])
+    return torch.tensor(obs).float()
+
 def convert_action(one_hot_acts):
     return np.argmax(np.concatenate([
         np.expand_dims(act, axis=0) for act in one_hot_acts
@@ -134,38 +147,23 @@ def run(config):
     np.random.seed(config.seed)
     if not USE_CUDA:
         torch.set_num_threads(config.n_training_threads)
-    env = make_parallel_env_wolf(
-        config.env_id, config.n_rollout_threads,
-        config.seed,
-        config.close_penalty,
-        config.num_players_train
-    )
+    env = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                config.num_players_train)
 
-    marl_env_train = make_parallel_env_wolf(
-        config.env_id, config.n_rollout_threads,
-        config.seed,
-        config.close_penalty,
-        config.num_players_train
-    )
-    marl_env_test = make_parallel_env_wolf(
-        config.env_id, config.n_rollout_threads,
-        config.seed,
-        config.close_penalty,
-        config.num_players_test
-    )
+    marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                           config.num_players_train)
+    marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                          config.num_players_test)
     env_train_adhoc = AsyncVectorEnv(
         [
-            make_env_adhoc_wolf('wolfpack-v5', i, config.num_players_train, 2000, config.close_penalty)
+            make_env_adhoc(config.env_id, i, 0, config.num_players_train, True)
             for i in range(config.n_rollout_threads)
         ]
     )
 
     env_eval_adhoc = AsyncVectorEnv(
         [
-            make_env_adhoc_wolf(
-                'wolfpack-v5', i, config.num_players_train, 2000, config.close_penalty,
-                implicit_max_player_num=config.num_players_test
-            )
+            make_env_adhoc(config.env_id, i, 0, config.num_players_test, True)
             for i in range(config.n_rollout_threads)
         ]
     )
@@ -244,7 +242,7 @@ def run(config):
     num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
     obs = env_train_adhoc.reset()
     while (all([k < config.eval_eps for k in num_dones])):
-        torch_obs = obs_adhoc_postprocess_wolf(obs['teammate_location'], obs['opponent_info'])
+        torch_obs = obs_adhoc_postprocess_lbf(obs)
         # Agent computes actions
         agent_actions = dgn.indiv_step(torch_obs)
         # Env step
@@ -267,7 +265,7 @@ def run(config):
     num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
     obs = env_eval_adhoc.reset()
     while (all([k < config.eval_eps for k in num_dones])):
-        torch_obs = obs_adhoc_postprocess_wolf(obs['teammate_location'], obs['opponent_info'])
+        torch_obs = obs_adhoc_postprocess_lbf(obs)
         # Agent computes actions
         agent_actions = dgn.indiv_step(torch_obs)
         # Env step
@@ -322,18 +320,10 @@ def run(config):
         if (ep_i + 1) % config.saving_frequency == 0:
             save_id = 'params_%i.pt' % (ep_i + 1)
             dgn.save(model_dir / curr_run / save_id)
-            marl_env_train = make_parallel_env_wolf(
-                config.env_id, config.n_rollout_threads,
-                config.seed,
-                config.close_penalty,
-                config.num_players_train
-            )
-            marl_env_test = make_parallel_env_wolf(
-                config.env_id, config.n_rollout_threads,
-                config.seed,
-                config.close_penalty,
-                config.num_players_test
-            )
+            marl_env_train = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                                   config.num_players_train)
+            marl_env_test = make_parallel_env_lbf(config.env_id, config.n_rollout_threads, config.seed,
+                                                  config.num_players_test)
             # Train env
             avgs = []
             dgn.prep_rollouts(device='cpu')
@@ -396,17 +386,14 @@ def run(config):
 
             env_train_adhoc = AsyncVectorEnv(
                 [
-                    make_env_adhoc_wolf('wolfpack-v5', i, config.num_players_train, 2000, config.close_penalty)
+                    make_env_adhoc(config.env_id, i, 0, config.num_players_train, True)
                     for i in range(config.n_rollout_threads)
                 ]
             )
 
             env_eval_adhoc = AsyncVectorEnv(
                 [
-                    make_env_adhoc_wolf(
-                        'wolfpack-v5', i, config.num_players_train, 2000, config.close_penalty,
-                        implicit_max_player_num=config.num_players_test
-                    )
+                    make_env_adhoc(config.env_id, i, 0, config.num_players_test, True)
                     for i in range(config.n_rollout_threads)
                 ]
             )
@@ -416,7 +403,7 @@ def run(config):
             num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
             obs = env_train_adhoc.reset()
             while (all([k < config.eval_eps for k in num_dones])):
-                torch_obs = obs_adhoc_postprocess_wolf(obs['teammate_location'], obs['opponent_info'])
+                torch_obs = obs_adhoc_postprocess_lbf(obs)
                 # Agent computes actions
                 agent_actions = dgn.indiv_step(torch_obs)
                 # Env step
@@ -439,7 +426,7 @@ def run(config):
             num_dones, per_worker_rew = [0] * config.n_rollout_threads, [0] * config.n_rollout_threads
             obs = env_eval_adhoc.reset()
             while (all([k < config.eval_eps for k in num_dones])):
-                torch_obs = obs_adhoc_postprocess_wolf(obs['teammate_location'], obs['opponent_info'])
+                torch_obs = obs_adhoc_postprocess_lbf(obs)
                 # Agent computes actions
                 agent_actions = dgn.indiv_step(torch_obs)
                 # Env step
